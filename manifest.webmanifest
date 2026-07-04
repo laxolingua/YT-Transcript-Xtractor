@@ -1,0 +1,12 @@
+{
+  "name": "Transcript Copier",
+  "short_name": "Transcript",
+  "description": "Copy a YouTube transcript without ads or accounts.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080808",
+  "theme_color": "#080808",
+  "icons": [
+    {"src":"/static/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}

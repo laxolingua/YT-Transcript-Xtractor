@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Transcript Copier</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <style>
+    :root { color-scheme: dark; --bg:#080808; --panel:#141414; --soft:#242424; --text:#f6f6f6; --muted:#9d9d9d; --accent:#ffffff; --danger:#ff7474; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:var(--bg); color:var(--text); font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    main { width:min(760px,100%); margin:auto; padding:calc(28px + env(safe-area-inset-top)) 18px calc(34px + env(safe-area-inset-bottom)); }
+    header { margin-bottom:26px; }
+    h1 { margin:0; font-size:clamp(30px,8vw,48px); letter-spacing:-.045em; }
+    header p { color:var(--muted); margin:8px 0 0; line-height:1.45; }
+    .card { background:var(--panel); border:1px solid #292929; border-radius:24px; padding:16px; box-shadow:0 18px 60px rgba(0,0,0,.28); }
+    label { display:block; font-size:14px; color:var(--muted); margin:0 0 8px 4px; }
+    input, select, textarea, button { font:inherit; }
+    .url-row { display:flex; gap:10px; }
+    input, select, textarea { width:100%; border:1px solid #333; background:#0e0e0e; color:var(--text); border-radius:16px; outline:none; }
+    input { padding:16px; min-height:56px; }
+    input:focus, select:focus, textarea:focus { border-color:#777; }
+    button { border:0; border-radius:16px; min-height:54px; padding:0 18px; font-weight:750; cursor:pointer; }
+    button.primary { width:100%; margin-top:12px; background:var(--accent); color:#080808; }
+    button.secondary { background:var(--soft); color:var(--text); }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    .paste { white-space:nowrap; }
+    .options { display:grid; grid-template-columns:1fr auto; gap:12px; align-items:end; margin-top:12px; }
+    select { min-height:48px; padding:0 12px; }
+    .toggle { display:flex; align-items:center; gap:9px; min-height:48px; color:var(--muted); font-size:14px; }
+    .toggle input { width:20px; min-height:20px; accent-color:white; }
+    #status { min-height:24px; margin:14px 2px 0; color:var(--muted); font-size:14px; }
+    #status.error { color:var(--danger); }
+    .result { margin-top:18px; display:none; }
+    .result.visible { display:block; }
+    .meta { display:flex; justify-content:space-between; gap:14px; align-items:flex-start; margin-bottom:12px; }
+    .meta h2 { margin:0; font-size:20px; line-height:1.25; }
+    .meta p { margin:5px 0 0; color:var(--muted); font-size:14px; }
+    .actions { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:12px 0; }
+    textarea { min-height:52vh; resize:vertical; padding:16px; line-height:1.55; font-size:16px; }
+    footer { color:#696969; text-align:center; margin-top:22px; font-size:12px; }
+    @media (max-width:560px) { .url-row { display:grid; grid-template-columns:1fr auto; } .options { grid-template-columns:1fr; } .actions { grid-template-columns:1fr 1fr; } .actions button:last-child { grid-column:1/-1; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Transcript Copier</h1>
+    <p>Paste a YouTube link. Copy the transcript. Nothing else.</p>
+  </header>
+
+  <section class="card">
+    <label for="url">YouTube link</label>
+    <div class="url-row">
+      <input id="url" type="url" inputmode="url" autocomplete="off" placeholder="https://youtu.be/…">
+      <button id="paste" class="secondary paste" type="button">Paste</button>
+    </div>
+
+    <div class="options">
+      <div>
+        <label for="language">Preferred language</label>
+        <select id="language">
+          <option value="">Automatic</option>
+          <option value="en">English</option>
+          <option value="es">Spanish</option>
+          <option value="de">German</option>
+        </select>
+      </div>
+      <label class="toggle"><input id="timestamps" type="checkbox"> Include timestamps</label>
+    </div>
+
+    <button id="extract" class="primary" type="button">Extract transcript</button>
+    <div id="status" aria-live="polite"></div>
+  </section>
+
+  <section id="result" class="card result">
+    <div class="meta">
+      <div>
+        <h2 id="title"></h2>
+        <p id="details"></p>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="copy" class="primary" type="button">Copy all</button>
+      <button id="share" class="secondary" type="button">Share</button>
+      <button id="download" class="secondary" type="button">Download .txt</button>
+    </div>
+    <textarea id="transcript" spellcheck="false"></textarea>
+  </section>
+
+  <footer>No accounts. No ads. No transcript storage.</footer>
+</main>
+<script>
+  const $ = id => document.getElementById(id);
+  const urlInput = $('url');
+  const status = $('status');
+  const result = $('result');
+  const transcript = $('transcript');
+
+  async function pasteClipboard() {
+    try {
+      urlInput.value = await navigator.clipboard.readText();
+      urlInput.focus();
+    } catch {
+      status.textContent = 'Press and hold the field, then choose Paste.';
+    }
+  }
+
+  async function extract() {
+    const url = urlInput.value.trim();
+    if (!url) { status.className='error'; status.textContent='Paste a YouTube link first.'; return; }
+    $('extract').disabled = true;
+    result.classList.remove('visible');
+    status.className='';
+    status.textContent='Extracting transcript…';
+    try {
+      const response = await fetch('/api/extract', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          url,
+          language:$('language').value || null,
+          include_timestamps:$('timestamps').checked
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Could not extract the transcript.');
+      $('title').textContent = data.title;
+      $('details').textContent = [data.channel, data.language].filter(Boolean).join(' · ');
+      transcript.value = data.transcript;
+      result.classList.add('visible');
+      status.textContent = `Transcript ready · ${data.transcript.length.toLocaleString()} characters`;
+      result.scrollIntoView({behavior:'smooth', block:'start'});
+    } catch (error) {
+      status.className='error';
+      status.textContent = error.message;
+    } finally {
+      $('extract').disabled = false;
+    }
+  }
+
+  async function copyAll() {
+    try {
+      await navigator.clipboard.writeText(transcript.value);
+      $('copy').textContent='Copied';
+      setTimeout(()=>$('copy').textContent='Copy all',1300);
+    } catch {
+      transcript.focus(); transcript.select(); document.execCommand('copy');
+    }
+  }
+
+  async function shareText() {
+    const text = transcript.value;
+    if (navigator.share) {
+      await navigator.share({title:$('title').textContent, text});
+    } else {
+      await copyAll();
+      status.textContent='Copied. You can paste it into any app.';
+    }
+  }
+
+  function downloadText() {
+    const blob = new Blob([transcript.value], {type:'text/plain;charset=utf-8'});
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = (($('title').textContent || 'transcript').replace(/[\\/:*?"<>|]+/g,'-')) + '.txt';
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  $('paste').addEventListener('click', pasteClipboard);
+  $('extract').addEventListener('click', extract);
+  $('copy').addEventListener('click', copyAll);
+  $('share').addEventListener('click', shareText);
+  $('download').addEventListener('click', downloadText);
+  urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') extract(); });
+
+  const params = new URLSearchParams(location.search);
+  if (params.get('url')) urlInput.value = params.get('url');
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/service-worker.js');
+</script>
+</body>
+</html>
