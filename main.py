@@ -14,7 +14,7 @@ from pydantic import BaseModel, HttpUrl
 from yt_dlp import YoutubeDL
 
 APP_DIR = Path(__file__).resolve().parent
-STATIC_DIR = APP_DIR / "static"
+STATIC_DIR = APP_DIR
 
 app = FastAPI(title="Transcript Copier", version="1.0.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
